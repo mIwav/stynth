@@ -1,0 +1,227 @@
+---
+
+# Notes:
+# Sample project C code is not presently written to produce a release artifact.
+# As such, release build options are disabled.
+# This sample, therefore, only demonstrates running a collection of unit tests.
+
+:project:
+  :use_exceptions: FALSE
+  :use_test_preprocessor: TRUE
+  :use_auxiliary_dependencies: TRUE
+  :build_root: build
+  :release_build: TRUE
+  :test_file_prefix: test_
+  :which_ceedling: vendor/ceedling
+  :default_tasks:
+    - test:all
+
+:release_build:
+  :output: project.elf
+  :use_assembly: TRUE
+
+:environment:
+
+:extension:
+  :executable: .exe
+  :assembly: .S
+
+:paths:
+  :test:
+  :include:
+    - include/**
+    - ./Drivers/STM32F7xx_HAL_Driver/Inc/**
+      # - ./Drivers/CMSIS/Device/ST/STM32F7xx/Include
+      # - Drivers/CMSIS/Include
+  :source:
+    - src/**
+    - ./Drivers/STM32F7xx_HAL_Driver/Src/**
+  :support:
+
+:defines:
+  # in order to add common defines:
+  #  1) remove the trailing [] from the :common: section
+  #  2) add entries to the :common: section (e.g. :test: has TEST defined)
+  :commmon: &common_defines []
+  :test:
+    - *common_defines
+    - STM32F767xx
+    - UNITY_INCLUDE_DOUBLE
+  :test_preprocess:
+    - *common_defines
+    - STM32F767xx
+  :release:
+    - HSE_VALUE=8000000
+    - STM32F767xx
+    - OS_USE_TRACE_SEMIHOSTING_DEBUG
+    - TRACE
+#    - USE_FULL_ASSERT
+    - DEBUG
+
+:cmock:
+  :mock_prefix: mock_
+  :when_no_prototypes: :warn
+  :enforce_strict_ordering: TRUE
+  :treat_externs: :include 
+  :includes_h_pre_orig_header:
+    - <stdbool.h>
+    - <stdint.h>
+  :plugins:
+    - :ignore
+    - :callback
+  :treat_as:
+    uint8:    HEX8
+    uint16:   HEX16
+    uint32:   UINT32
+    int8:     INT8
+    bool:     UINT8
+
+:gcov:
+    :html_report_type: basic
+
+:tools:
+# Ceedling defaults to using gcc for compiling, linking, etc.
+# As [:tools] is blank, gcc will be used (so long as it's in your system path)
+# See documentation to configure a given toolchain for use
+  :release_compiler: 
+    :executable: /usr/local/x-tools/gcc-arm-none-eabi/bin/arm-none-eabi-gcc
+    :name: 'GNU ARM Cross C Compiler'
+    :arguments:
+        - -I"$": COLLECTION_PATHS_TEST_TOOLCHAIN_INCLUDE
+        - -I"$": COLLECTION_PATHS_TEST_SUPPORT_SOURCE_INCLUDE
+        - -D$: COLLECTION_DEFINES_RELEASE_AND_VENDOR
+        - -mcpu=cortex-m7 
+        - -mthumb 
+        - -mfloat-abi=hard
+        - -mfpu=fpv5-d16
+        - -O0
+          # - -O3
+        - -fmessage-length=0
+        - -fsigned-char
+        - -ffunction-sections 
+        - -fdata-sections
+        - -ffreestanding
+        - -fno-move-loop-invariants
+        - -fno-exceptions
+        - -fno-unwind-tables
+        - -nostdlib
+        - -Wextra
+        - -std=gnu11
+        - -MMD
+        - -MP 
+        - -c
+        - -o ${2}
+        - ${1}
+  :release_assembler:
+    :executable: /usr/local/x-tools/gcc-arm-none-eabi/bin/arm-none-eabi-gcc
+    :name: 'GNU ARM Cross Assembler'
+    :arguments:
+        - -mcpu=cortex-m7
+        - -mthumb
+        - -mfloat-abi=hard
+          #- -mfloat-abi=softfp
+        - -mfpu=fpv5-d16
+        - -fsigned-char
+        - -ffunction-sections
+        - -fdata-sections
+        - -ffreestanding
+        - -fno-move-loop-invariants
+        - -Wall
+        - -Wall
+        - -Wextra 
+        - -fno-exceptions
+        - -fno-unwind-tables
+        - -nostdlib
+        - -x assembler-with-cpp
+        - -I"$": COLLECTION_PATHS_TEST_TOOLCHAIN_INCLUDE
+        - -I"$": COLLECTION_PATHS_TEST_SUPPORT_SOURCE_INCLUDE
+        - -D$: COLLECTION_DEFINES_RELEASE_AND_VENDOR
+        - -MMD
+        - -MP
+        - -c
+        - -o ${2}
+        - ${1}
+  :release_linker: 
+  # :executable: /usr/local/x-tools/arm-bare_newlib_cortex_m3_nommu-eabihf/bin/arm-bare_newlib_cortex_m3_nommu-eabihf-g++
+    :executable: /usr/local/x-tools/gcc-arm-none-eabi/bin/arm-none-eabi-g++
+    :name: 'GNU ARM Cross C Linker'
+    :arguments:
+          # - -O3
+          #- -mcpu=cortex-m7
+          #- -mthumb
+          #- -mfloat-abi=hard
+          #- -mfpu=fpv5-d16
+          # - -shared
+          #- -fmessage-length=0
+          #- -fsigned-char
+          #- -ffunction-sections
+          #- -fdata-sections
+          #- -ffreestanding
+          #- -fno-move-loop-invariants
+          #- -fno-exceptions
+          #- -fno-unwind-tables
+          #- -nostdlib
+          # - -g3
+          # - -g3
+          #- -Xlinker
+          #- -L"./ldscripts"
+          #- -T "./ldscripts/mem.ld"
+          #- -T "./ldscripts/libs.ld"
+          #- -T "./ldscripts/sections.ld"
+          # - -nostartfiles
+          # - --gc-sections
+          #- -Wl,-Map,"project.map" 
+          #- --specs=nosys.specs
+          #- --specs=nano.specs
+          #- -L"/usr/local/x-tools/gcc-arm-none-eabi/arm-none-eabi/lib/"
+          #- -L libc.a
+          #- -L libm.a
+          #- -o ${2}
+          #- ${1}
+        - -mcpu=cortex-m7
+        - -mthumb
+        - -mfloat-abi=hard
+          #- -mfloat-abi=softfp
+        - -mfpu=fpv5-d16
+        - -O3
+          # - -O3
+        - -fmessage-length=0
+        - -fsigned-char
+        - -ffunction-sections
+        - -fdata-sections
+        - -ffreestanding
+        - -fno-move-loop-invariants
+        - -Wall
+        - -Wextra
+        - -T mem.ld
+        - -T libs.ld
+        - -T sections.ld
+        - -nostartfiles
+        - -Xlinker
+        - --gc-sections
+        - -L"./ldscripts"
+        - -L libc.a
+        - -Wl,-Map,"project.map" 
+        - --specs=nano.specs
+        - -o ${2}
+        - ${1}
+# LIBRARIES
+# These libraries are automatically injected into the build process. Those specified as
+# common will be used in all types of builds. Otherwise, libraries can be injected in just
+# tests or releases. These options are MERGED with the options in supplemental yaml files.
+:libraries:
+  :placement: :end
+  :flag: "${1}"  # or "-L ${1}" for example
+  :common: &common_libraries []
+  :test:
+    - *common_libraries
+  :release:
+    - *common_libraries
+
+:plugins:
+  :load_paths:
+    - vendor/ceedling/plugins
+  :enabled:
+    - stdout_pretty_tests_report
+    - module_generator
+...
