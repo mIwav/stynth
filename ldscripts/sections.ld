@@ -65,7 +65,7 @@ SECTIONS
         __vectors_start__ = ABSOLUTE(.) ; /* STM specific definition */
         KEEP(*(.isr_vector))     	/* Interrupt vectors */
         
-		KEEP(*(.cfmconfig))			/* Freescale configuration words */   
+	KEEP(*(.cfmconfig))			/* Freescale configuration words */   
 		     
         /* 
          * This section is here for convenience, to store the
