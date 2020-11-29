@@ -40,31 +40,23 @@
 #include "main.h"
 #include "stm32f7xx_hal.h"
 
-/* USER CODE BEGIN Includes */
 #include "stm32f7xx_hal_gpio.h"
-/* USER CODE END Includes */
 
-/* Private variables ---------------------------------------------------------*/
-
+DAC_HandleTypeDef hdac;
 I2C_HandleTypeDef hi2c2;
-
 UART_HandleTypeDef huart3;
+RNG_HandleTypeDef hrng;
 
-/* USER CODE BEGIN PV */
-/* Private variables ---------------------------------------------------------*/
 
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_I2C2_Init(void);
+static void MX_RNG_Init(void);
+static void MX_DAC_Init(void);
 
 volatile int sendReq = 0;
 
-/* USER CODE BEGIN PFP */
-/* Private function prototypes -----------------------------------------------*/
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	if(GPIO_Pin == GPIO_PIN_13)
 	{
@@ -75,52 +67,35 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 			sendReq=0;
 	}
 }
-/* USER CODE END PFP */
 
-/* USER CODE BEGIN 0 */
 int _write(int32_t file, char *ptr, int32_t len)
 {
 		for(int i=0; i< len; i++)
 				ITM_SendChar(*ptr++);
 }
-/* USER CODE END 0 */
-/**
-  * @brief  The application entry point.
-  *
-  * @retval None
-  */
+
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
+  /* Enable I-Cache-------------------------------------------------------------*/
+  SCB_EnableICache();
 
-  /* USER CODE END 1 */
-
+  /* Enable D-Cache-------------------------------------------------------------*/
+  SCB_EnableDCache();
   /* MCU Configuration----------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
   /* Configure the system clock */
   SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART3_UART_Init();
   MX_I2C2_Init();
-  /* USER CODE BEGIN 2 */
+  MX_RNG_Init();
+  MX_DAC_Init();
 
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   uint8_t data;
 
   uint8_t deviceAddr = 0x16;
@@ -129,36 +104,28 @@ int main(void)
 
   while (1)
   {
-	 
-	 if(sendReq)
-	 {
-			 _write(0,"I2C Rx\n",7);
-			 ret = HAL_I2C_Mem_Read(&hi2c2, deviceAddr  << 1, volumeReg, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
-			 if(ret == HAL_OK)
-					 _write(0,"Success\n",8);
 
-	 }
-	 else
-	 {
-			 HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
-			 _write(0,"I2C Tx\n",7);
-			 data = 0x64;
+	  if(sendReq)
+	  {
+		  _write(0,"I2C Rx\n",7);
+		  ret = HAL_I2C_Mem_Read(&hi2c2, deviceAddr  << 1, volumeReg, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
+		  if(ret == HAL_OK)
+			  _write(0,"Success\n",8);
 
-			 ret = HAL_I2C_Mem_Write(&hi2c2, deviceAddr << 1, volumeReg, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
-			 if(ret == HAL_OK)
-					 _write(0,"Success\n",8);
+	  }
+	  else
+	  {
+		  HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
+		  _write(0,"I2C Tx\n",7);
+		  data = 0x64;
 
-	 }
+		  ret = HAL_I2C_Mem_Write(&hi2c2, deviceAddr << 1, volumeReg, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
+		  if(ret == HAL_OK)
+			  _write(0,"Success\n",8);
 
-	 HAL_Delay(500);
-
-  /* USER CODE END WHILE */
-
-  /* USER CODE BEGIN 3 */
-
+	  }
+	  HAL_Delay(500);
   }
-  /* USER CODE END 3 */
-
 }
 
 /**
@@ -185,9 +152,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 96;
+  RCC_OscInitStruct.PLL.PLLN = 216;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLQ = 9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -206,17 +173,19 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_7) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_I2C2;
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_I2C2
+  				|RCC_PERIPHCLK_CLK48;
   PeriphClkInitStruct.Usart3ClockSelection = RCC_USART3CLKSOURCE_PCLK1;
   PeriphClkInitStruct.I2c2ClockSelection = RCC_I2C2CLKSOURCE_PCLK1;
+  PeriphClkInitStruct.Clk48ClockSelection = RCC_CLK48SOURCE_PLL;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -232,6 +201,31 @@ void SystemClock_Config(void)
 
   /* SysTick_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+}
+
+/* DAC init function */
+static void MX_DAC_Init(void)
+{
+
+  DAC_ChannelConfTypeDef sConfig;
+
+    /**DAC Initialization 
+    */
+  hdac.Instance = DAC;
+  if (HAL_DAC_Init(&hdac) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+    /**DAC channel OUT1 config 
+    */
+  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
+  sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
+  if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
 }
 
 /* I2C2 init function */
@@ -262,6 +256,18 @@ static void MX_I2C2_Init(void)
     /**Configure Digital filter 
     */
   if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
+/* RNG init function */
+static void MX_RNG_Init(void)
+{
+
+  hrng.Instance = RNG;
+  if (HAL_RNG_Init(&hrng) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -343,7 +349,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 4, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 
