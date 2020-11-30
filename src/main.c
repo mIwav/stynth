@@ -42,48 +42,65 @@
 
 #include "stm32f7xx_hal_gpio.h"
 
+#define SAMPLES (64)
+
 DAC_HandleTypeDef hdac;
+DMA_HandleTypeDef hdma_dac1;
 I2C_HandleTypeDef hi2c2;
 UART_HandleTypeDef huart3;
+TIM_HandleTypeDef htim6;
 RNG_HandleTypeDef hrng;
 
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_RNG_Init(void);
 static void MX_DAC_Init(void);
+static void MX_TIM6_Init(void);
 
 volatile int sendReq = 0;
+uint16_t audioBuffer[2][SAMPLES] = {0};
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	if(GPIO_Pin == GPIO_PIN_13)
-	{
-     	HAL_GPIO_TogglePin(GPIOB, LD2_Pin);
-		if(sendReq == 0)
-			sendReq = 1;
-		else if(sendReq == 1)
-			sendReq=0;
-	}
+  if (GPIO_Pin == GPIO_PIN_13) {
+    HAL_GPIO_TogglePin(GPIOB, LD2_Pin);
+    if (sendReq == 0)
+      sendReq = 1;
+    else if (sendReq == 1)
+      sendReq = 0;
+  }
 }
 
-int _write(int32_t file, char *ptr, int32_t len)
-{
-		for(int i=0; i< len; i++)
-				ITM_SendChar(*ptr++);
+int _write(int32_t file, char *ptr, int32_t len) {
+  for (int i = 0; i < len; i++)
+    ITM_SendChar(*ptr++);
 }
 
-int main(void)
+void generateAudio(uint16_t buffer[SAMPLES])
 {
-  /* Enable I-Cache-------------------------------------------------------------*/
+  uint16_t toggle = 0u;
+  for (size_t i = 0; i < SAMPLES; ++i) {
+    buffer[i] = toggle * 4095u;
+    toggle = (toggle == 0u) ? 1u : 0u;
+  }
+}
+
+int main(void) {
+  /* Enable
+   * I-Cache-------------------------------------------------------------*/
   SCB_EnableICache();
 
-  /* Enable D-Cache-------------------------------------------------------------*/
+  /* Enable
+   * D-Cache-------------------------------------------------------------*/
   SCB_EnableDCache();
-  /* MCU Configuration----------------------------------------------------------*/
+  /* MCU
+   * Configuration----------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick.
+   */
   HAL_Init();
 
   /* Configure the system clock */
@@ -91,42 +108,76 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_I2C2_Init();
   MX_RNG_Init();
   MX_DAC_Init();
+  MX_TIM6_Init();
 
   uint8_t data;
 
   uint8_t deviceAddr = 0x16;
-  uint8_t volumeReg  = 0x4B;
+  uint8_t volumeReg = 0x4B;
   HAL_StatusTypeDef ret;
+  uint32_t dacValue = 0;
+  const uint32_t dacMax = 32768;
 
-  while (1)
-  {
+  generateAudio(audioBuffer[0]);
+  generateAudio(audioBuffer[1]);
+  
+  HAL_DAC_Init(&hdac);
+  HAL_TIM_Base_Init(&htim6);
+  HAL_TIM_Base_Start(&htim6);
 
-	  if(sendReq)
-	  {
-		  _write(0,"I2C Rx\n",7);
-		  ret = HAL_I2C_Mem_Read(&hi2c2, deviceAddr  << 1, volumeReg, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
-		  if(ret == HAL_OK)
-			  _write(0,"Success\n",8);
+  ret = HAL_DAC_Start_DMA(&hdac, DAC_CHANNEL_1, (uint32_t *)audioBuffer,
+                        2 * SAMPLES, DAC_ALIGN_12B_R);
 
-	  }
-	  else
-	  {
-		  HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
-		  _write(0,"I2C Tx\n",7);
-		  data = 0x64;
+  if(ret == HAL_OK)
+    _write(0, "DMA up\n", 7);
 
-		  ret = HAL_I2C_Mem_Write(&hi2c2, deviceAddr << 1, volumeReg, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
-		  if(ret == HAL_OK)
-			  _write(0,"Success\n",8);
-
-	  }
-	  HAL_Delay(500);
+  while (1) {
+      if(dacValue == 0)
+          HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
+      dacValue += 32;
+      dacValue %= dacMax;
   }
+    // HAL_Delay(100);
 }
+
+void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef* hdac)
+{
+  /* Prevent unused argument(s) compilation warning */
+  UNUSED(hdac);
+  generateAudio(audioBuffer[1]); 
+}
+
+/**
+  * @brief  Conversion half DMA transfer callback in non blocking mode for Channel1 
+  * @param  hdac pointer to a DAC_HandleTypeDef structure that contains
+  *         the configuration information for the specified DAC.
+  * @retval None
+  */
+void HAL_DAC_ConvHalfCpltCallbackCh1(DAC_HandleTypeDef* hdac)
+{
+  /* Prevent unused argument(s) compilation warning */
+  UNUSED(hdac);
+  generateAudio(audioBuffer[0]); 
+}
+
+/**
+  * @brief  Error DAC callback for Channel1.
+  * @param  hdac pointer to a DAC_HandleTypeDef structure that contains
+  *         the configuration information for the specified DAC.
+  * @retval None
+  */
+void HAL_DAC_ErrorCallbackCh1(DAC_HandleTypeDef *hdac)
+{
+  /* Prevent unused argument(s) compilation warning */
+  UNUSED(hdac);
+  _write(0, "DMAErr\n", 7);
+}
+
 
 /**
   * @brief System Clock Configuration
@@ -219,13 +270,12 @@ static void MX_DAC_Init(void)
 
     /**DAC channel OUT1 config 
     */
-  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
+  sConfig.DAC_Trigger = DAC_TRIGGER_T6_TRGO;
   sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
   if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_1) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
-
 }
 
 /* I2C2 init function */
@@ -274,6 +324,31 @@ static void MX_RNG_Init(void)
 
 }
 
+/* TIM6 init function */
+static void MX_TIM6_Init(void)
+{
+
+  TIM_MasterConfigTypeDef sMasterConfig;
+
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 35-1;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 64-1;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /* USART3 init function */
 static void MX_USART3_UART_Init(void)
 {
@@ -292,6 +367,21 @@ static void MX_USART3_UART_Init(void)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
+
+}
+
+/** 
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void) 
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
 
 }
 
