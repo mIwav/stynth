@@ -37,18 +37,13 @@
   ******************************************************************************
   */
 /* Includes ------------------------------------------------------------------*/
-#include "main.h"
 
-#define ARM_MATH_CM7
-#include "arm_math.h"
 #include "stm32f7xx_hal.h"
 
 #include "stm32f7xx_hal_gpio.h"
 
-// #define PI (3.141592654f)
-#define TWOPI (6.283185307f)
-#define SAMPLES (64)
-#define SAMPLERATE (48000.f)
+#include "main.h"
+#include "stynth.h"
 
 DAC_HandleTypeDef hdac;
 DMA_HandleTypeDef hdma_dac1;
@@ -56,7 +51,6 @@ I2C_HandleTypeDef hi2c2;
 UART_HandleTypeDef huart3;
 TIM_HandleTypeDef htim6;
 RNG_HandleTypeDef hrng;
-
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -68,8 +62,6 @@ static void MX_DAC_Init(void);
 static void MX_TIM6_Init(void);
 
 volatile int sendReq = 0;
-
-const float invSamplerate = 1.f / SAMPLERATE;
 
 uint16_t audioBuffer[2][SAMPLES] = {0};
 
@@ -88,33 +80,7 @@ int _write(int32_t file, char *ptr, int32_t len) {
     ITM_SendChar(*ptr++);
 }
 
-void genRect(uint16_t buffer[])
-{
-  uint16_t toggle = 0u;
-  for (size_t i = 0; i < SAMPLES; ++i) {
-    buffer[i] = toggle * 4095u;
-    toggle = (toggle == 0u) ? 1u : 0u;
-  }
-}
-
-typedef struct sine {
-  float phase;
-  float freq;
-} Sine;
-
-static Sine onekSine = {0.f, 1000.f};
-
-void genSine(Sine *sinGen, uint16_t *buffer) {
-  float f = sinGen->freq;
-  float phaseAcc = sinGen->phase;
-  for (size_t i = 0; i < SAMPLES; ++i) {
-    buffer[i] = (uint16_t) ((arm_sin_f32(phaseAcc) + 1.f) * 2047.f);
-    phaseAcc += TWOPI * f * invSamplerate;
-    if(phaseAcc > TWOPI)
-    	phaseAcc -=  TWOPI;
-  }
-  sinGen->phase = phaseAcc;
-}
+Sine onekSine = {0.f, 1000.f};
 
 void generateAudio(uint16_t buffer[SAMPLES])
 {
