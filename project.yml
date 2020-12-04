@@ -46,6 +46,7 @@
   :test:
     - *common_defines
     - STM32F767xx
+    - __FPU_PRESENT 
     - UNITY_INCLUDE_DOUBLE
   :test_preprocess:
     - *common_defines
@@ -54,6 +55,7 @@
     - HSE_VALUE=8000000
     - STM32F767xx
     - OS_USE_TRACE_SEMIHOSTING_DEBUG
+    - __FPU_PRESENT 
     - TRACE
 #    - USE_FULL_ASSERT
     - DEBUG
@@ -200,6 +202,8 @@
         - -Xlinker
         - --gc-sections
         - -L"./ldscripts"
+        # - -L"./libs/libarm_cortexM7lfsp_math.a"
+        # - -L larm_cortexM7lfsp_math.a
         - -L libc.a
         - -Wl,-Map,"project.map" 
         - --specs=nano.specs
@@ -217,6 +221,7 @@
     - *common_libraries
   :release:
     - *common_libraries
+    - ./libs/libarm_cortexM7lfsp_math.a
 
 :plugins:
   :load_paths:

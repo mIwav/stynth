@@ -38,11 +38,17 @@
   */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+
+#define ARM_MATH_CM7
+#include "arm_math.h"
 #include "stm32f7xx_hal.h"
 
 #include "stm32f7xx_hal_gpio.h"
 
+// #define PI (3.141592654f)
+#define TWOPI (6.283185307f)
 #define SAMPLES (64)
+#define SAMPLERATE (48000.f)
 
 DAC_HandleTypeDef hdac;
 DMA_HandleTypeDef hdma_dac1;
@@ -62,6 +68,9 @@ static void MX_DAC_Init(void);
 static void MX_TIM6_Init(void);
 
 volatile int sendReq = 0;
+
+const float invSamplerate = 1.f / SAMPLERATE;
+
 uint16_t audioBuffer[2][SAMPLES] = {0};
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
@@ -79,13 +88,39 @@ int _write(int32_t file, char *ptr, int32_t len) {
     ITM_SendChar(*ptr++);
 }
 
-void generateAudio(uint16_t buffer[SAMPLES])
+void genRect(uint16_t buffer[])
 {
   uint16_t toggle = 0u;
   for (size_t i = 0; i < SAMPLES; ++i) {
     buffer[i] = toggle * 4095u;
     toggle = (toggle == 0u) ? 1u : 0u;
   }
+}
+
+typedef struct sine {
+  float phase;
+  float freq;
+} Sine;
+
+static Sine onekSine = {0.f, 1000.f};
+
+void genSine(Sine *sinGen, uint16_t *buffer) {
+  float f = sinGen->freq;
+  float phaseAcc = sinGen->phase;
+  for (size_t i = 0; i < SAMPLES; ++i) {
+    buffer[i] = (uint16_t) ((arm_sin_f32(phaseAcc) + 1.f) * 2047.f);
+    phaseAcc += TWOPI * f * invSamplerate;
+    if(phaseAcc > TWOPI)
+    	phaseAcc -=  TWOPI;
+  }
+  sinGen->phase = phaseAcc;
+}
+
+void generateAudio(uint16_t buffer[SAMPLES])
+{
+  HAL_GPIO_WritePin(GPIOG, PROC_IND_IO_Pin, GPIO_PIN_SET);
+  genSine(&onekSine, buffer); 
+  HAL_GPIO_WritePin(GPIOG, PROC_IND_IO_Pin, GPIO_PIN_RESET);
 }
 
 int main(void) {
@@ -331,9 +366,9 @@ static void MX_TIM6_Init(void)
   TIM_MasterConfigTypeDef sMasterConfig;
 
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 35-1;
+  htim6.Init.Prescaler = 3-1;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 64-1;
+  htim6.Init.Period = 750-1;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -410,7 +445,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOG, PROC_IND_IO_Pin|GPIO_PIN_3|USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : USER_Btn_Pin */
   GPIO_InitStruct.Pin = USER_Btn_Pin;
@@ -424,6 +459,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PROC_IND_IO_Pin PG3 */
+  GPIO_InitStruct.Pin = PROC_IND_IO_Pin|GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /*Configure GPIO pin : USB_PowerSwitchOn_Pin */
   GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
