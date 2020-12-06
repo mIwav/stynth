@@ -41,7 +41,9 @@
 #include "stm32f7xx_hal.h"
 
 #include "stm32f7xx_hal_gpio.h"
-
+#include "usb_device.h"
+#include "usbd_desc.h"
+#include "usbd_midi.h"
 #include "main.h"
 #include "stynth.h"
 
@@ -62,6 +64,9 @@ static void MX_RNG_Init(void);
 static void MX_DAC_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
+
+extern uint8_t midiDataOutBuffer[32];
+extern volatile uint8_t midiDataAvailable;
 
 volatile int sendReq = 0;
 
@@ -92,16 +97,9 @@ void generateAudio(uint16_t buffer[SAMPLES])
 }
 
 int main(void) {
-  /* Enable
-   * I-Cache-------------------------------------------------------------*/
   SCB_EnableICache();
 
-  /* Enable
-   * D-Cache-------------------------------------------------------------*/
   SCB_EnableDCache();
-  /* MCU
-   * Configuration----------------------------------------------------------*/
-
   /* Reset of all peripherals, Initializes the Flash interface and the Systick.
    */
   HAL_Init();
@@ -129,24 +127,25 @@ int main(void) {
 
   generateAudio(audioBuffer[0]);
   generateAudio(audioBuffer[1]);
-  
+
   HAL_DAC_Init(&hdac);
   HAL_TIM_Base_Init(&htim6);
   HAL_TIM_Base_Start(&htim6);
 
   ret = HAL_DAC_Start_DMA(&hdac, DAC_CHANNEL_1, (uint32_t *)audioBuffer,
-                        2 * SAMPLES, DAC_ALIGN_12B_R);
+                          2 * SAMPLES, DAC_ALIGN_12B_R);
 
-  if(ret == HAL_OK)
+  if (ret == HAL_OK)
     _write(0, "DMA up\n", 7);
 
   while (1) {
-      if(dacValue == 0)
-          HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
-      dacValue += 32;
-      dacValue %= dacMax;
+    if (midiDataAvailable == 1) {
+      HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
+      _write(0, "R\n", 2);
+      midiDataAvailable = 0;
+    }
   }
-    // HAL_Delay(100);
+  // HAL_Delay(100);
 }
 
 void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef* hdac)
@@ -393,25 +392,24 @@ static void MX_USB_OTG_FS_PCD_Init(void)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
+  
   // usbd_core
-/*
-  if (USBD_Init(&hUsbDeviceFS, &MIDI_Desc, 0) != USBD_OK)
+
+  if (USBD_Init(&hUsbDeviceFS, &FS_Desc, 0) != USBD_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
+  _write(0, "USBI\n", 5);
   if (USBD_RegisterClass(&hUsbDeviceFS, &USBD_MIDI_ClassDriver) != USBD_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
-  if (USBD_RegisterInterface(&hUsbDeviceFS, &USBD_MIDI_fops_FS) != USBD_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
+  _write(0, "USBR\n", 5);
   if (USBD_Start(&hUsbDeviceFS) != USBD_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
-*/
+  _write(0, "USBS\n", 5);
 }
 
 
@@ -509,6 +507,7 @@ void _Error_Handler(char *file, int line)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  _write(0, "Err\n", 4);
   while(1)
   {
   }

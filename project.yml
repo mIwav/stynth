@@ -31,11 +31,15 @@
   :include:
     - include/**
     - ./Drivers/STM32F7xx_HAL_Driver/Inc/**
+    - ./Middleware/USB/Core
+    - ./Middleware/USB/Class/MIDI
       # - ./Drivers/CMSIS/Device/ST/STM32F7xx/Include
       # - Drivers/CMSIS/Include
   :source:
     - src/**
     - ./Drivers/STM32F7xx_HAL_Driver/Src/**
+    - ./Middleware/USB/Core/*
+    - ./Middleware/USB/Class/MIDI/*
   :support:
 
 :defines:
